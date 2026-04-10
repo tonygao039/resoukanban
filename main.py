@@ -21,10 +21,11 @@ def main():
     draw = ImageDraw.Draw(img)
     
     # 下载一个免费的黑体中文字体（防止云端电脑没有中文字体显示乱码）
-   font_path = "simhei.ttf"
- if not os.path.exists(font_path):
-     font_url = "https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf"
-     open(font_path, "wb").write(requests.get(font_url).content)
+    font_path = "simhei.ttf"
+    if not os.path.exists(font_path):
+        font_url = "https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf"
+        open(font_path, "wb").write(requests.get(font_url).content)
+    
     # 设置字体大小（标题稍微大点，内容小点）
     font_title = ImageFont.truetype(font_path, 26)
     font_content = ImageFont.truetype(font_path, 18)
