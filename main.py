@@ -95,4 +95,100 @@ def push_image(img, page_id):
 def page_zhihu():
     print("获取知乎热榜...")
     try:
-        u
+        url = "https://api.zhihu.com/topstory/hot-list"
+        res = requests.get(url, headers=HEADERS, timeout=10).json()
+        titles = [item['target']['title'] for item in res['data']]
+    except:
+        titles = ["数据获取失败，请检查网络"] * 10
+
+    # 页面 1：从第 1 条开始画
+    img1 = Image.new('1', (400, 300), color=255)
+    next_start = draw_dynamic_hot_list(ImageDraw.Draw(img1), "🔥 知乎热榜 (1-5)", titles, 0)
+    push_image(img1, page_id=1)
+
+    # 页面 2：从页面 1 结束的地方接着画
+    img2 = Image.new('1', (400, 300), color=255)
+    draw_dynamic_hot_list(ImageDraw.Draw(img2), "🔥 知乎热榜 (续)", titles, next_start)
+    push_image(img2, page_id=2)
+
+def page_github():
+    print("获取 GitHub 趋势...")
+    items = []
+    try:
+        gh_headers = HEADERS.copy()
+        if GITHUB_TOKEN: gh_headers['Authorization'] = f"token {GITHUB_TOKEN}"
+        url = f"https://api.github.com/search/repositories?q=created:>{(datetime.now()-timedelta(days=7)).strftime('%Y-%m-%d')}&sort=stars&order=desc"
+        res = requests.get(url, headers=gh_headers, timeout=10).json()
+        for item in res['items'][:8]:
+            items.append(f"{item['name']} ({item['stargazers_count']}★)")
+    except:
+        items = ["获取失败"] * 5
+        
+    img = Image.new('1', (400, 300), color=255)
+    draw_dynamic_hot_list(ImageDraw.Draw(img), "💻 GitHub 热门开源", items)
+    push_image(img, page_id=3)
+
+def page_dashboard():
+    print("生成综合看板...")
+    img = Image.new('1', (400, 300), color=255)
+    draw = ImageDraw.Draw(img)
+    
+    # --- 保持你最喜欢的并排天气/倒计时样式 ---
+    try:
+        url = "http://t.weather.itboy.net/api/weather/city/101030100"
+        weather_data = requests.get(url, headers=HEADERS, timeout=10).json()
+        city = weather_data['cityInfo']['city']
+        forecast = weather_data['data']['forecast'][0]
+        wea = forecast['type']
+        high_str = forecast['high'].replace('高温 ', '')
+        low_str = forecast['low'].replace('低温 ', '')
+        avg_temp = (int(high_str.replace('℃','')) + int(low_str.replace('℃',''))) / 2
+        
+        if avg_temp >= 28: tip = "天气炎热，建议穿清凉衣物。"
+        elif avg_temp >= 15: tip = "体感舒适，建议穿单层薄外套。"
+        else: tip = "天气寒冷，请注意防寒保暖！"
+    except:
+        city, wea, high_str, low_str, tip = "天津", "未知", "0℃", "0℃", "获取天气失败"
+
+    # 左侧：天气方块
+    draw.rounded_rectangle([(10, 10), (195, 120)], radius=10, fill=0)
+    draw.text((20, 20), f"{city} | {wea}", font=font_title, fill=255)
+    draw.text((20, 60), f"{low_str}~{high_str}", font=font_title, fill=255)
+    
+    # 右侧：倒计时方块
+    today = datetime.today().weekday()
+    days_to_weekend = 5 - today
+    draw.rounded_rectangle([(205, 10), (390, 120)], radius=10, fill=0)
+    draw.text((215, 20), "距离周末", font=font_item, fill=255)
+    draw.text((215, 60), "已是周末!" if days_to_weekend <= 0 else f"还有 {days_to_weekend} 天", font=font_title, fill=255)
+
+    # 中间：穿衣建议（带换行）
+    draw.text((10, 135), "👕 建议:", font=font_item, fill=0)
+    tip_lines = get_wrapped_lines(tip, 18)
+    for i, line in enumerate(tip_lines):
+        draw.text((10, 160 + i*22), line, font=font_item, fill=0)
+
+    # --- 保持你最喜欢的“每日一言”分割线布局 ---
+    try:
+        hitokoto = requests.get("https://v1.hitokoto.cn/?c=a", timeout=5).json()['hitokoto']
+    except:
+        hitokoto = "永远年轻，永远热泪盈眶。"
+        
+    draw.line([(10, 220), (390, 220)], fill=0, width=2)
+    draw.text((10, 230), "「每日一言」", font=font_small, fill=0)
+    
+    hito_lines = get_wrapped_lines(hitokoto, 20)
+    for i, line in enumerate(hito_lines[:2]): # 最多显示两行，防止溢出
+        draw.text((10, 250 + i*25), line, font=font_item, fill=0)
+
+    push_image(img, page_id=4)
+
+if __name__ == "__main__":
+    if not API_KEY or not MAC_ADDRESS:
+        print("错误: 请配置 GitHub Secrets")
+        exit(1)
+        
+    page_zhihu()     # 分两页推送知乎热搜
+    page_github()    # 推送 GitHub
+    page_dashboard() # 推送你最喜欢的综合看板
+    print("任务执行完毕！")
