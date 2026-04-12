@@ -32,7 +32,7 @@ jobs:
         run: python main.py
 
       - name: 保活：每月创建空提交
-        if: github.event_name == 'schedule' && github.run_number % 720 == 0  # 每月约720次运行
+        if: true  # 每月约720次运行
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
