@@ -19,7 +19,7 @@ jobs:
           python-version: '3.10'
           
       - name: 安装依赖包
-        run: pip install requests pillow
+        run: pip install requests pillow zhdate
           
       - name: 运行！生成三张图并推送
         env:
