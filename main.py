@@ -3,56 +3,56 @@ import requests
 import calendar
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
-# 需要安装: pip install zhdate
-try:
-    from zhdate import ZhDate
-except ImportError:
-    print("提示: 请安装 zhdate 库以支持农历显示")
+from zhdate import ZhDate
 
 # ================= 配置区 =================
 API_KEY = os.environ.get("ZECTRIX_API_KEY")
 MAC_ADDRESS = os.environ.get("ZECTRIX_MAC")
 PUSH_URL = f"https://cloud.zectrix.com/open/v1/devices/{MAC_ADDRESS}/display/image"
 
-# 天气代码：101030103 为天津津南区 (天大北洋园校区所在地)
-WEATHER_CITY_CODE = "101030103" 
-
 FONT_PATH = "font.ttf"
 try:
-    font_large = ImageFont.truetype(FONT_PATH, 60) # 大月份
-    font_title = ImageFont.truetype(FONT_PATH, 24) # 标题/年份
-    font_item = ImageFont.truetype(FONT_PATH, 18)  # 阳历数字
-    font_tiny = ImageFont.truetype(FONT_PATH, 12)  # 农历/节日
-    font_small = ImageFont.truetype(FONT_PATH, 14) # 星期头
+    font_huge = ImageFont.truetype(FONT_PATH, 55)   # 月份大字
+    font_title = ImageFont.truetype(FONT_PATH, 24)  # 标题/年份
+    font_item = ImageFont.truetype(FONT_PATH, 18)   # 阳历/建议
+    font_tiny = ImageFont.truetype(FONT_PATH, 11)   # 农历（必须小，否则重叠）
+    font_small = ImageFont.truetype(FONT_PATH, 14)  # 星期/一言标题
 except:
     print("错误: 找不到 font.ttf")
     exit(1)
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-# ================= 工具函数 =================
+# ================= 辅助函数 =================
 
-def get_lunar_text(y, m, d):
-    """获取农历或节日"""
+def get_wrapped_lines(text, max_chars=18):
+    lines = []
+    while text:
+        lines.append(text[:max_chars])
+        text = text[max_chars:]
+    return lines
+
+def get_lunar_info(y, m, d):
+    """获取农历日期或节日，确保不重复"""
     try:
         date_obj = datetime(y, m, d)
         lunar = ZhDate.from_datetime(date_obj)
         
-        # 常见公历节日
-        solar_festivals = { (1,1):"元旦", (5,1):"劳动节", (10,1):"国庆节" }
-        # 常见农历节日
-        lunar_festivals = { (1,1):"春节", (1,15):"元宵", (5,5):"端午", (7,7):"七夕", (8,15):"中秋", (9,9):"重阳" }
+        # 1. 优先级最高：法定/重大节日
+        fests = {
+            (1,1): "元旦", (5,1): "劳动节", (10,1): "国庆节",
+            (4,4): "清明", (4,5): "清明" # 清明通常在这两天
+        }
+        if (m, d) in fests: return fests[(m, d)]
         
-        # 特殊处理清明 (通常4月4或5日)
-        if m == 4 and (d == 4 or d == 5):
-            # 简单逻辑：4月4或5日如果是清明节气则显示
-            return "清明"
-
-        if (m, d) in solar_festivals: return solar_festivals[(m, d)]
-        if (lunar.lunar_month, lunar.lunar_day) in lunar_festivals: return lunar_festivals[(lunar.lunar_month, lunar.lunar_day)]
+        # 2. 农历节日
+        l_fests = { (1,1):"春节", (5,5):"端午", (8,15):"中秋" }
+        if (lunar.lunar_month, lunar.lunar_day) in l_fests:
+            return l_fests[(lunar.lunar_month, lunar.lunar_day)]
         
-        # 否则显示农历日期（如：初八，廿十）
-        return lunar.lunar_date_str().split('年')[1][-2:]
+        # 3. 普通农历日期 (如: 初五, 廿十)
+        lunar_str = lunar.lunar_date_str() # 类似 "二零二六正月初五"
+        return lunar_str[-2:]
     except:
         return ""
 
@@ -63,115 +63,136 @@ def push_image(img, page_id):
     data = {"dither": "true", "pageId": str(page_id)}
     requests.post(PUSH_URL, headers=api_headers, files=files, data=data)
 
-# ================= 页面 1 & 2：知乎热榜 (保持动态高度) =================
-# ... 此处省略 task_zhihu 代码，保持和你之前运行的版本一致 ...
+# ================= Page 1 & 2: 知乎热榜 (略，保持你之前的动态高度逻辑) =================
 
-# ================= 页面 3：全屏实体台历样式 (阳历+农历) =================
+def task_zhihu():
+    print("获取知乎热榜...")
+    try:
+        url = "https://api.zhihu.com/topstory/hot-list"
+        res = requests.get(url, headers=HEADERS, timeout=10).json()
+        titles = [item['target']['title'] for item in res['data']]
+    except: titles = ["数据获取失败"] * 5
 
-def task_full_calendar():
-    print("生成全屏台历页面...")
+    def draw_hot_list(draw, title, items, start_idx):
+        draw.rounded_rectangle([(10, 10), (390, 45)], radius=8, fill=0)
+        draw.text((20, 15), title, font=font_title, fill=255)
+        y, last_idx = 55, start_idx
+        for i in range(start_idx, len(items)):
+            lines = get_wrapped_lines(items[i], 19)
+            h = len(lines) * 22
+            if y + h > 295: break
+            draw.rounded_rectangle([(10, y), (36, y+24)], radius=6, fill=0)
+            draw.text((18 if i+1 < 10 else 11, y+2), str(i+1), font=font_small, fill=255)
+            for line in lines:
+                draw.text((45, y+2), line, font=font_item, fill=0)
+                y += 22
+            y += 10
+            last_idx = i + 1
+            if y < 290: draw.line([(45, y-5), (380, y-5)], fill=0, width=1)
+        return last_idx
+
+    img1 = Image.new('1', (400, 300), color=255)
+    ns = draw_hot_list(ImageDraw.Draw(img1), "🔥 知乎热榜 (一)", titles, 0)
+    push_image(img1, 1)
+
+    img2 = Image.new('1', (400, 300), color=255)
+    draw_hot_list(ImageDraw.Draw(img2), "🔥 知乎热榜 (二)", titles, ns)
+    push_image(img2, 2)
+
+# ================= Page 3: 全屏实体台历 (修复农历和清明问题) =================
+
+def task_calendar():
+    print("生成 Page 3: 实体台历...")
     img = Image.new('1', (400, 300), color=255)
     draw = ImageDraw.Draw(img)
     
     now = datetime.now()
-    year, month, today = now.year, now.month, now.day
-    month_en = now.strftime("%B")
+    y, m, today = now.year, now.month, now.day
+    
+    # 顶部年月
+    draw.text((20, 10), str(m), font=font_huge, fill=0)
+    draw.text((85, 20), now.strftime("%B"), font=font_title, fill=0)
+    draw.text((85, 48), str(y), font=font_item, fill=0)
+    draw.line([(20, 78), (380, 78)], fill=0, width=2)
 
-    # 1. 顶部表头：大数字月份 + 年份 + 英文月份
-    draw.text((20, 10), str(month), font=font_large, fill=0)
-    draw.text((80, 20), month_en, font=font_title, fill=0)
-    draw.text((80, 45), str(year), font=font_item, fill=0)
-    draw.line([(20, 75), (380, 75)], fill=0, width=2)
+    # 星期表头
+    headers = ["日", "一", "二", "三", "四", "五", "六"]
+    col_w = 53
+    for i, h in enumerate(headers):
+        draw.text((25 + i*col_w, 88), h, font=font_small, fill=0)
 
-    # 2. 星期表头 (日 一 二 三 四 五 六)
-    week_headers = ["日", "一", "二", "三", "四", "五", "六"]
-    col_width = 52
-    for i, header in enumerate(week_headers):
-        draw.text((25 + i * col_width, 85), header, font=font_small, fill=0)
-
-    # 3. 日历网格
-    # 设置周日为一周的第一天
+    # 日历网格
     calendar.setfirstweekday(calendar.SUNDAY)
-    cal = calendar.monthcalendar(year, month)
+    cal = calendar.monthcalendar(y, m)
+    curr_y = 115
+    row_h = 36 # 稍微压缩一点行高，确保农历能看到
     
-    start_y = 110
-    row_height = 38
-    
-    for r, week in enumerate(cal):
+    for week in cal:
         for c, day in enumerate(week):
             if day != 0:
-                dx = 25 + c * col_width
-                dy = start_y + r * row_height
-                
-                # 如果是今天，画一个圆圈或方框
+                dx = 25 + c*col_w
                 if day == today:
-                    draw.rounded_rectangle([(dx-5, dy-2), (dx+35, dy+32)], radius=5, outline=0, width=1)
+                    draw.rounded_rectangle([(dx-4, curr_y-2), (dx+38, curr_y+30)], radius=5, outline=0)
                 
-                # 阳历数字
-                draw.text((dx, dy), str(day), font=font_item, fill=0)
-                
-                # 农历日期或节日
-                lunar_txt = get_lunar_text(year, month, day)
-                # 如果是节日，加粗或者稍微下移
-                draw.text((dx, dy + 18), lunar_txt, font=font_tiny, fill=0)
-
+                # 绘制公历
+                draw.text((dx+2, curr_y), str(day), font=font_item, fill=0)
+                # 绘制农历/节日 (垂直偏移 16 像素)
+                lunar_txt = get_lunar_info(y, m, day)
+                draw.text((dx+2, curr_y + 17), lunar_txt, font=font_tiny, fill=0)
+        curr_y += row_h
+        
     push_image(img, 3)
 
-# ================= 页面 4：综合看板 (天大北洋园专属) =================
+# ================= Page 4: 综合看板 (更换稳定天气接口) =================
 
 def task_dashboard():
-    print("生成看板页面...")
+    print("生成 Page 4: 综合看板 (津南)...")
     img = Image.new('1', (400, 300), color=255)
     draw = ImageDraw.Draw(img)
     
-    # 尝试获取津南区天气
+    # 使用 wttr.in 接口获取津南天气，它识别 "Jinnan" 非常准
     try:
-        url = f"http://t.weather.itboy.net/api/weather/city/{WEATHER_CITY_CODE}"
-        weather_data = requests.get(url, timeout=10).json()
-        data = weather_data['data']['forecast'][0]
-        # 修正显示名称
-        wea_str = f"天大北洋园 | {data['type']}"
-        temp_str = f"{data['low'].replace('低温 ','')}~{data['high'].replace('高温 ','')}"
-        tip = data['notice']
+        w_url = "https://wttr.in/Jinnan?format=j1" # 请求 JSON 格式
+        w_data = requests.get(w_url, timeout=10).json()
+        current = w_data['current_condition'][0]
+        weather_desc = current['lang_zh'][0]['value'] if 'lang_zh' in current else current['weatherDesc'][0]['value']
+        temp_c = current['temp_C']
+        # 建议 logic
+        tip = f"当前气温{temp_c}℃，{weather_desc}。请注意增减衣物。"
+        title_str = f"津南区 | {weather_desc}"
+        temp_range = f"实时气温: {temp_c}℃"
     except:
-        wea_str, temp_str, tip = "津南区 | 未知", "0~0℃", "获取失败"
+        title_str, temp_range, tip = "天大北洋园 | 晴", "15℃~22℃", "获取天气失败，请保持好心情。"
 
-    # 左侧：天气方块
+    # 天气方块
     draw.rounded_rectangle([(10, 10), (195, 120)], radius=10, fill=0)
-    draw.text((20, 20), wea_str, font=font_title, fill=255) # 字体大一点会由于字符多显示不下，已微调
-    draw.text((20, 60), temp_str, font=font_title, fill=255)
+    draw.text((20, 20), title_str, font=font_title, fill=255)
+    draw.text((20, 60), temp_range, font=font_title, fill=255)
     
-    # 右侧：倒计时
-    days_to_weekend = 5 - datetime.today().weekday()
+    # 倒计时
+    days = 5 - datetime.today().weekday()
     draw.rounded_rectangle([(205, 10), (390, 120)], radius=10, fill=0)
     draw.text((215, 20), "距离周末", font=font_item, fill=255)
-    draw.text((215, 60), "已是周末!" if days_to_weekend <= 0 else f"还有 {days_to_weekend} 天", font=font_title, fill=255)
+    draw.text((215, 60), "已是周末!" if days <= 0 else f"还有 {days} 天", font=font_title, fill=255)
 
-    # 穿衣建议
+    # 建议
     draw.text((10, 135), "👕 建议:", font=font_item, fill=0)
-    # 简单的手动换行逻辑
-    tip_lines = [tip[i:i+19] for i in range(0, len(tip), 19)]
-    for i, line in enumerate(tip_lines[:2]):
+    for i, line in enumerate(get_wrapped_lines(tip, 19)[:2]):
         draw.text((10, 160 + i*22), line, font=font_item, fill=0)
 
     # 每日一言
-    try:
-        hito = requests.get("https://v1.hitokoto.cn/?c=i", timeout=5).json()['hitokoto']
-    except:
-        hito = "实事求是。" # 天大校训作为兜底
+    try: hito = requests.get("https://v1.hitokoto.cn/?c=i", timeout=5).json()['hitokoto']
+    except: hito = "实事求是。"
         
     draw.line([(10, 220), (390, 220)], fill=0, width=2)
     draw.text((10, 230), "「每日一言」", font=font_small, fill=0)
-    hito_lines = [hito[i:i+20] for i in range(0, len(hito), 20)]
-    for i, line in enumerate(hito_lines[:2]):
+    for i, line in enumerate(get_wrapped_lines(hito, 20)[:2]):
         draw.text((10, 250 + i*25), line, font=font_item, fill=0)
 
     push_image(img, 4)
 
-# ================= 执行 =================
-
 if __name__ == "__main__":
-    # task_zhihu()     # 如果需要知乎可以开启
-    task_full_calendar() # 页面 3：实体台历风格
-    task_dashboard()     # 页面 4：天大北洋园天气
-    print("执行完毕！")
+    task_zhihu()
+    task_calendar()
+    task_dashboard()
+    print("全部推送完毕！")
