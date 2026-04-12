@@ -11,27 +11,25 @@ API_KEY = os.environ.get("ZECTRIX_API_KEY")
 MAC_ADDRESS = os.environ.get("ZECTRIX_MAC")
 PUSH_URL = f"https://cloud.zectrix.com/open/v1/devices/{MAC_ADDRESS}/display/image"
 
-# 高德天气 API Key
+# 高德配置（津南区）
 AMAP_KEY = os.environ.get("AMAP_WEATHER_KEY")
-# 津南区 adcode
-ADCODE = "120112"
+ADCODE = "120112"  # 津南区
 
 FONT_PATH = "font.ttf"
 try:
-    font_huge = ImageFont.truetype(FONT_PATH, 65)   # 月份大字/实时气温
-    font_title = ImageFont.truetype(FONT_PATH, 24)  # 标题栏
-    font_item = ImageFont.truetype(FONT_PATH, 18)   # 正文/阳历/建议/未来天气
-    font_small = ImageFont.truetype(FONT_PATH, 14)  # 序号/星期/辅助信息
-    font_tiny = ImageFont.truetype(FONT_PATH, 11)   # 农历/细节
-    font_48 = ImageFont.truetype(FONT_PATH, 48)     # 当前温度专用
-    font_36 = ImageFont.truetype(FONT_PATH, 36)     # 天气描述专用
+    font_huge = ImageFont.truetype(FONT_PATH, 65)
+    font_title = ImageFont.truetype(FONT_PATH, 24)
+    font_item = ImageFont.truetype(FONT_PATH, 18)
+    font_small = ImageFont.truetype(FONT_PATH, 14)
+    font_tiny = ImageFont.truetype(FONT_PATH, 11)
+    font_48 = ImageFont.truetype(FONT_PATH, 48)
+    font_36 = ImageFont.truetype(FONT_PATH, 36)
 except:
-    print("错误: 找不到 font.ttf，请确保字体文件在同一目录下")
+    print("错误: 找不到 font.ttf")
     exit(1)
 
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+HEADERS = {'User-Agent': 'Mozilla/5.0'}
 
-# ================= 工具函数 =================
 def get_wrapped_lines(text, max_chars=18):
     lines = []
     while text:
@@ -51,7 +49,7 @@ def get_clothing_advice(temp):
     except:
         return "请根据实际体感气温调整着装。"
 
-# ================= 精确节气与农历节日 =================
+# ================= 节气与农历 =================
 def get_solar_term(year, month, day):
     term_table = {
         (2024,2,4):"立春", (2024,2,19):"雨水", (2024,3,5):"惊蛰", (2024,3,20):"春分",
@@ -118,16 +116,15 @@ def push_image(img, page_id):
     except Exception as e:
         print(f"Page {page_id} 推送失败: {e}")
 
-# ================= 页面 1 & 2: 知乎热榜 =================
+# ================= 知乎热榜 =================
 def task_zhihu():
     print("获取知乎热榜...")
     try:
         url = "https://api.zhihu.com/topstory/hot-list"
         res = requests.get(url, headers=HEADERS, timeout=10).json()
         titles = [item['target']['title'] for item in res['data']]
-    except Exception as e:
-        print(f"知乎获取异常: {e}")
-        titles = ["数据获取失败，请检查网络"] * 10
+    except:
+        titles = ["数据获取失败"] * 10
 
     def draw_list(draw, page_title, items, start_idx):
         draw.rounded_rectangle([(10, 10), (390, 45)], radius=8, fill=0)
@@ -157,34 +154,28 @@ def task_zhihu():
     img1 = Image.new('1', (400, 300), color=255)
     next_s = draw_list(ImageDraw.Draw(img1), "◆ 知乎热榜 (一)", titles, 0)
     push_image(img1, 1)
-
     img2 = Image.new('1', (400, 300), color=255)
     draw_list(ImageDraw.Draw(img2), "◆ 知乎热榜 (二)", titles, next_s)
     push_image(img2, 2)
 
-# ================= 页面 3: 日历 =================
+# ================= 日历 =================
 def task_calendar():
-    print("生成 Page 3: 实体台历...")
+    print("生成 Page 3: 日历...")
     img = Image.new('1', (400, 300), color=255)
     draw = ImageDraw.Draw(img)
-
     now = datetime.now()
     y, m, today = now.year, now.month, now.day
-
     draw.text((20, 10), str(m), font=font_huge, fill=0)
     draw.text((90, 20), now.strftime("%B"), font=font_title, fill=0)
     draw.text((90, 48), str(y), font=font_item, fill=0)
     draw.line([(20, 78), (380, 78)], fill=0, width=2)
-
     headers = ["日", "一", "二", "三", "四", "五", "六"]
     col_w = 53
     for i, h in enumerate(headers):
         draw.text((25 + i*col_w, 88), h, font=font_small, fill=0)
-
     calendar.setfirstweekday(calendar.SUNDAY)
     cal = calendar.monthcalendar(y, m)
     curr_y, row_h = 115, 38
-
     for week in cal:
         for c, day in enumerate(week):
             if day != 0:
@@ -203,125 +194,153 @@ def task_calendar():
                     else:
                         draw.text((dx+2, curr_y+18), bottom_text, font=font_tiny, fill=0)
         curr_y += row_h
-
     push_image(img, 3)
 
-# ================= 高德天气获取 =================
-def get_amap_weather():
-    if not AMAP_KEY:
-        print("错误: 未设置 AMAP_WEATHER_KEY 环境变量")
-        return None
-
-    url = f"https://restapi.amap.com/v3/weather/weatherInfo?city={ADCODE}&key={AMAP_KEY}&extensions=all"
-    try:
-        resp = requests.get(url, timeout=10).json()
-        if resp.get("status") != "1":
-            print(f"高德天气 API 错误: {resp}")
-            return None
-
-        live = resp["lives"][0]
-        forecast = resp["forecasts"][0]
-        today_cast = forecast["casts"][0]
-
-        city_name = live["city"]
-        weather_text = live["weather"]
-        curr_temp = int(live["temperature"])
-        humidity = live["humidity"]                     # 湿度，单位 %
-        wind_power_raw = live["windpower"]              # 如 "≤3"
-        wind_direction = live["winddirection"]          # 如 "东"
-
-        # 提取风力数字（去掉 ≤ 等符号）
-        wind_num = re.search(r'\d+', wind_power_raw)
-        wind_power = wind_num.group(0) if wind_num else "0"
-
-        # 今日高低温度
-        today_high = int(today_cast["daytemp"])
-        today_low = int(today_cast["nighttemp"])
-
-        # 日出日落
-        sunrise = today_cast["sunrise"]
-        sunset = today_cast["sunset"]
-
-        # 未来两天预报
-        future = []
-        for day in forecast["casts"][1:3]:
-            future.append({
-                "date": day["date"],
-                "weather": day["dayweather"],
-                "temp_low": int(day["nighttemp"]),
-                "temp_high": int(day["daytemp"])
-            })
-
-        # 计算体感温度（基于气温、湿度、风速）
+# ================= 混合天气获取（津南区）=================
+def get_hybrid_weather():
+    """高德实时 + wttr.in预报，专为津南区配置"""
+    result = {
+        "city": "津南区",
+        "weather": "未知",
+        "temp_curr": 0,
+        "temp_low": 0,
+        "temp_high": 0,
+        "wind_info": "无数据",
+        "humidity": "0%",
+        "feel_temp": "N/A",
+        "sunrise": "--:--",
+        "sunset": "--:--",
+        "forecasts": []
+    }
+    
+    # ---------- 1. 高德实时数据 ----------
+    amap_success = False
+    if AMAP_KEY:
         try:
-            wind_speed = int(wind_power)
-            # 风速等级转 km/h 估算：1级≈2km/h, 2级≈8km/h, 3级≈15km/h, 每级+7
-            if wind_speed <= 1:
-                wind_kmh = 2
-            elif wind_speed == 2:
-                wind_kmh = 8
+            amap_url = f"https://restapi.amap.com/v3/weather/weatherInfo?city={ADCODE}&key={AMAP_KEY}&extensions=base"
+            print(f"请求高德 API: {amap_url}")
+            amap_resp = requests.get(amap_url, timeout=10).json()
+            if amap_resp.get("status") == "1" and amap_resp.get("lives"):
+                live = amap_resp["lives"][0]
+                result["city"] = live.get("city", "津南区")
+                result["weather"] = live.get("weather", "未知")
+                result["temp_curr"] = int(live.get("temperature", 0))
+                result["humidity"] = live.get("humidity", "0") + "%"
+                wind_power_raw = live.get("windpower", "0")
+                wind_direction = live.get("winddirection", "")
+                wind_num = re.search(r'\d+', wind_power_raw)
+                wind_power = wind_num.group(0) if wind_num else "0"
+                result["wind_info"] = f"{wind_power}级 {wind_direction}"
+                
+                # 计算体感温度
+                try:
+                    wind_speed = int(wind_power)
+                    if wind_speed <= 1:
+                        wind_kmh = 2
+                    elif wind_speed == 2:
+                        wind_kmh = 8
+                    else:
+                        wind_kmh = 15 + (wind_speed - 3) * 7
+                    feel_temp = result["temp_curr"] - (wind_kmh / 15) if wind_kmh > 5 else result["temp_curr"]
+                    humidity_val = int(live.get("humidity", 50))
+                    if humidity_val > 70:
+                        feel_temp -= 1
+                    result["feel_temp"] = f"{round(feel_temp, 1)}°C"
+                except:
+                    result["feel_temp"] = f"{result['temp_curr']}°C"
+                amap_success = True
+                print("✅ 高德 API 调用成功，获取到实时数据")
             else:
-                wind_kmh = 15 + (wind_speed - 3) * 7
-            # 体感温度简化公式
-            if wind_kmh > 5:
-                feel_temp = curr_temp - (wind_kmh / 15)
-            else:
-                feel_temp = curr_temp
-            humidity_val = int(humidity)
-            if humidity_val > 70:
-                feel_temp = feel_temp - 1
-            feel_temp = round(feel_temp, 1)
-            feel_temp_str = f"{feel_temp}°C"
-        except:
-            feel_temp_str = "N/A"
-
-        return {
-            "city": city_name,
-            "weather": weather_text,
-            "temp_curr": curr_temp,
-            "temp_low": today_low,
-            "temp_high": today_high,
-            "wind_info": f"{wind_power}级 {wind_direction}风",
-            "humidity": f"{humidity}%",
-            "feel_temp": feel_temp_str,
-            "sunrise": sunrise,
-            "sunset": sunset,
-            "forecasts": future
-        }
+                print(f"⚠️ 高德 API 返回状态异常: {amap_resp.get('status')}, infocode: {amap_resp.get('infocode')}")
+        except Exception as e:
+            print(f"❌ 高德 API 请求异常: {e}")
+    else:
+        print("⚠️ 未设置 AMAP_WEATHER_KEY，跳过高德 API")
+    
+    # ---------- 2. wttr.in 预报和日出日落 ----------
+    try:
+        wttr_url = "https://wttr.in/Jinnan,Tianjin?format=j1&lang=zh"
+        print(f"请求 wttr.in: {wttr_url}")
+        wttr_resp = requests.get(wttr_url, timeout=15).json()
+        
+        if not amap_success:
+            # 如果高德失败，从 wttr 获取实时数据作为后备
+            curr = wttr_resp['current_condition'][0]
+            result["temp_curr"] = int(curr['temp_C'])
+            result["weather"] = curr['lang_zh'][0]['value']
+            result["humidity"] = curr['humidity'] + '%'
+            wind_kmph = int(curr['windspeedKmph'])
+            wind_dir = curr['winddir16Point']
+            # 风速转等级
+            if wind_kmph < 1: wp = 0
+            elif wind_kmph <= 5: wp = 1
+            elif wind_kmph <= 11: wp = 2
+            elif wind_kmph <= 19: wp = 3
+            elif wind_kmph <= 28: wp = 4
+            elif wind_kmph <= 38: wp = 5
+            elif wind_kmph <= 49: wp = 6
+            elif wind_kmph <= 61: wp = 7
+            elif wind_kmph <= 74: wp = 8
+            elif wind_kmph <= 88: wp = 9
+            elif wind_kmph <= 102: wp = 10
+            elif wind_kmph <= 117: wp = 11
+            else: wp = 12
+            result["wind_info"] = f"{wp}级 {wind_dir}"
+            result["feel_temp"] = curr.get('FeelsLikeC', str(result["temp_curr"])) + '°C'
+            print("⚠️ 高德失败，已使用 wttr.in 后备数据")
+        
+        # 今日高低温
+        today = wttr_resp['weather'][0]
+        result["temp_low"] = int(today['mintempC'])
+        result["temp_high"] = int(today['maxtempC'])
+        
+        # 日出日落
+        astro = wttr_resp['weather'][0]['astronomy'][0]
+        result["sunrise"] = astro['sunrise']
+        result["sunset"] = astro['sunset']
+        
+        # 未来两天预报
+        for day in wttr_resp['weather'][1:3]:
+            result["forecasts"].append({
+                "date": day['date'][5:],
+                "weather": day['hourly'][4]['lang_zh'][0]['value'][:3],
+                "temp_low": day['mintempC'],
+                "temp_high": day['maxtempC']
+            })
+        print("✅ wttr.in 数据获取成功")
     except Exception as e:
-        print(f"高德天气请求异常: {e}")
-        return None
+        print(f"❌ wttr.in 请求异常: {e}")
+    
+    return result
 
-# ================= 页面 4: 天气看板 =================
+# ================= 天气看板 =================
 def task_weather_dashboard():
-    print("生成 Page 4: 气象仪表盘 (高德)...")
+    print("生成 Page 4: 混合天气看板（津南区）...")
     img = Image.new('1', (400, 300), color=255)
     draw = ImageDraw.Draw(img)
 
-    weather_data = get_amap_weather()
-    if not weather_data:
-        draw.text((20, 50), "天气数据获取失败，请检查API Key", font=font_item, fill=0)
+    weather = get_hybrid_weather()
+    # 如果两个数据源都失败且没有预报，显示错误
+    if weather["temp_curr"] == 0 and not weather["forecasts"]:
+        draw.text((20, 50), "天气数据获取失败，请检查网络或API Key", font=font_item, fill=0)
         push_image(img, 4)
         return
 
-    city_name = weather_data["city"]
-    weather_text = weather_data["weather"]
-    curr_temp = weather_data["temp_curr"]
-    today_low = weather_data["temp_low"]
-    today_high = weather_data["temp_high"]
-    wind_info = weather_data["wind_info"]
-    humidity = weather_data["humidity"]
-    feel_temp = weather_data["feel_temp"]
-    sunrise = weather_data["sunrise"]
-    sunset = weather_data["sunset"]
-    forecasts = weather_data["forecasts"]
+    city_name = weather["city"]
+    weather_text = weather["weather"]
+    curr_temp = weather["temp_curr"]
+    today_low = weather["temp_low"]
+    today_high = weather["temp_high"]
+    wind_info = weather["wind_info"]
+    humidity = weather["humidity"]
+    feel_temp = weather["feel_temp"]
+    sunrise = weather["sunrise"]
+    sunset = weather["sunset"]
+    forecasts = weather["forecasts"]
 
-    # 获取当前北京时间
-    now_utc = datetime.utcnow()
-    now_beijing = now_utc + timedelta(hours=8)
+    now_beijing = datetime.utcnow() + timedelta(hours=8)
     update_time = now_beijing.strftime("%H:%M")
 
-    # 标题行
     draw.text((20, 10), f"{city_name} | 天大北洋园", font=font_title, fill=0)
     time_text = f"更新: {update_time}"
     try:
@@ -331,36 +350,25 @@ def task_weather_dashboard():
         time_width = len(time_text) * 8
     draw.text((390 - time_width, 12), time_text, font=font_small, fill=0)
 
-    # 当前温度
     draw.text((25, 40), f"{curr_temp}°C", font=font_48, fill=0)
-    # 今日高低温度
     draw.text((25, 100), f"{today_low}°/{today_high}°", font=font_item, fill=0)
-    # 天气描述
     draw.text((150, 45), f"{weather_text}", font=font_36, fill=0)
 
-    # 右侧卡片：风力+风向、湿度、体感温度
     draw.rounded_rectangle([(235, 45), (385, 130)], radius=8, outline=0, fill=0)
     draw.text((245, 45), f"{wind_info}", font=font_small, fill=255)
     draw.text((245, 70), f"湿度 {humidity}", font=font_small, fill=255)
     draw.text((245, 95), f"体感 {feel_temp}", font=font_small, fill=255)
 
-    # 日出日落
     draw.text((25, 135), f"日出 {sunrise}   日落 {sunset}", font=font_item, fill=0)
 
-    # 未来两天预报
     draw.line([(20, 160), (380, 160)], fill=0, width=1)
     x_positions = [30, 200]
     for i, day in enumerate(forecasts[:2]):
         x = x_positions[i]
-        date_str = day["date"][5:]
-        weather_desc = day["weather"][:3]
-        low = day["temp_low"]
-        high = day["temp_high"]
-        draw.text((x, 175), f"{date_str}", font=font_item, fill=0)
-        draw.text((x, 200), f"{weather_desc}", font=font_item, fill=0)
-        draw.text((x, 220), f"{low}°~{high}°", font=font_item, fill=0)
+        draw.text((x, 175), day["date"], font=font_item, fill=0)
+        draw.text((x, 200), day["weather"], font=font_item, fill=0)
+        draw.text((x, 220), f"{day['temp_low']}°~{day['temp_high']}°", font=font_item, fill=0)
 
-    # 穿衣建议
     advice = get_clothing_advice(curr_temp)
     draw.line([(20, 250), (380, 250)], fill=0, width=1)
     advice_lines = [advice[i:i+18] for i in range(0, len(advice), 18)]
@@ -372,9 +380,8 @@ def task_weather_dashboard():
 # ================= 主程序 =================
 if __name__ == "__main__":
     if not API_KEY or not MAC_ADDRESS:
-        print("错误: 请在 GitHub Secrets 中配置 ZECTRIX_API_KEY 和 ZECTRIX_MAC")
+        print("错误: 请配置 ZECTRIX_API_KEY 和 ZECTRIX_MAC")
         exit(1)
-
     task_zhihu()
     task_calendar()
     task_weather_dashboard()
