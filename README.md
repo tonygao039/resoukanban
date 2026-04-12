@@ -79,6 +79,21 @@
 
 ## 🛠️ 自定义修改
 
+### 🗺️ 修改天气城市
+
+默认天气地点为 **津南区（天津）**。如果你想切换到其他城市，请按以下步骤操作：
+
+1. 在 GitHub 仓库中找到 `main.py` 文件，点击进入。
+2. 点击右上角的 ✏️ 铅笔图标，编辑文件。
+3. 找到 `task_weather_dashboard()` 函数中的这一行：
+
+   ```python
+   url = "https://wttr.in/Jinnan,Tianjin?format=j1&lang=zh"
+4. 将 Jinnan,Tianjin 替换为你所在城市的英文名称（拼音），例如：
+   北京：Beijing
+   上海：Shanghai
+
+
 ### 调整布局坐标
 
 所有绘图坐标均硬编码在 `task_zhihu()`、`task_calendar()`、`task_weather_dashboard()` 中。你可以根据需要微调数字（例如 `draw.text((x, y), ...)` 中的 `x`、`y`）。
