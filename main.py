@@ -2,7 +2,7 @@ import os
 import requests
 import calendar
 from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime, timedelta
+from datetime import datetime
 from zhdate import ZhDate
 
 # ================= 配置区 =================
@@ -11,7 +11,7 @@ MAC_ADDRESS = os.environ.get("ZECTRIX_MAC")
 PUSH_URL = f"https://cloud.zectrix.com/open/v1/devices/{MAC_ADDRESS}/display/image"
 
 # 和风天气配置
-QWEATHER_KEY = os.environ.get("QWEATHER_API_KEY")  # 请确保已设置环境变量，或直接填字符串
+QWEATHER_KEY = os.environ.get("QWEATHER_API_KEY")  # 必须设置环境变量
 CITY_CODE = "101030103"  # 津南区
 
 FONT_PATH = "font.ttf"
@@ -25,75 +25,73 @@ except:
     print("错误: 找不到 font.ttf")
     exit(1)
 
-# ================= 精确节气表（2024-2030年，实际可覆盖当前年份）=================
+# ================= 精确节气表（2024-2027，避免连续多天显示同一节气）=================
 def get_accurate_solar_term(year, month, day):
-    """返回节气名称，非节气返回None。数据来自公开的节气时刻表（日期部分）。"""
-    # 数据格式: (year, month, day) -> 节气名称
-    # 这里只列出最近几年，你也可以扩展或使用算法库。
+    """根据精确日期返回节气名称，非节气返回None"""
     term_table = {
-        # 2024
+        # 2024年
         (2024, 2, 4): "立春", (2024, 2, 19): "雨水", (2024, 3, 5): "惊蛰", (2024, 3, 20): "春分",
         (2024, 4, 4): "清明", (2024, 4, 19): "谷雨", (2024, 5, 5): "立夏", (2024, 5, 20): "小满",
         (2024, 6, 5): "芒种", (2024, 6, 21): "夏至", (2024, 7, 6): "小暑", (2024, 7, 22): "大暑",
         (2024, 8, 7): "立秋", (2024, 8, 22): "处暑", (2024, 9, 7): "白露", (2024, 9, 22): "秋分",
         (2024, 10, 8): "寒露", (2024, 10, 23): "霜降", (2024, 11, 7): "立冬", (2024, 11, 22): "小雪",
         (2024, 12, 6): "大雪", (2024, 12, 21): "冬至",
-        # 2025
+        # 2025年
         (2025, 1, 5): "小寒", (2025, 1, 20): "大寒", (2025, 2, 3): "立春", (2025, 2, 18): "雨水",
         (2025, 3, 5): "惊蛰", (2025, 3, 20): "春分", (2025, 4, 4): "清明", (2025, 4, 20): "谷雨",
         (2025, 5, 5): "立夏", (2025, 5, 21): "小满", (2025, 6, 5): "芒种", (2025, 6, 21): "夏至",
         (2025, 7, 7): "小暑", (2025, 7, 22): "大暑", (2025, 8, 7): "立秋", (2025, 8, 23): "处暑",
         (2025, 9, 7): "白露", (2025, 9, 22): "秋分", (2025, 10, 8): "寒露", (2025, 10, 23): "霜降",
         (2025, 11, 7): "立冬", (2025, 11, 22): "小雪", (2025, 12, 7): "大雪", (2025, 12, 21): "冬至",
-        # 2026 (当前年份)
+        # 2026年
         (2026, 1, 5): "小寒", (2026, 1, 20): "大寒", (2026, 2, 4): "立春", (2026, 2, 18): "雨水",
         (2026, 3, 5): "惊蛰", (2026, 3, 20): "春分", (2026, 4, 5): "清明", (2026, 4, 20): "谷雨",
         (2026, 5, 5): "立夏", (2026, 5, 21): "小满", (2026, 6, 6): "芒种", (2026, 6, 21): "夏至",
         (2026, 7, 7): "小暑", (2026, 7, 23): "大暑", (2026, 8, 7): "立秋", (2026, 8, 23): "处暑",
         (2026, 9, 7): "白露", (2026, 9, 23): "秋分", (2026, 10, 8): "寒露", (2026, 10, 23): "霜降",
         (2026, 11, 7): "立冬", (2026, 11, 22): "小雪", (2026, 12, 7): "大雪", (2026, 12, 21): "冬至",
-        # 2027 (可继续添加)
+        # 2027年
+        (2027, 1, 5): "小寒", (2027, 1, 20): "大寒", (2027, 2, 4): "立春", (2027, 2, 19): "雨水",
+        (2027, 3, 6): "惊蛰", (2027, 3, 21): "春分", (2027, 4, 5): "清明", (2027, 4, 20): "谷雨",
+        (2027, 5, 6): "立夏", (2027, 5, 21): "小满", (2027, 6, 6): "芒种", (2027, 6, 22): "夏至",
+        (2027, 7, 7): "小暑", (2027, 7, 23): "大暑", (2027, 8, 8): "立秋", (2027, 8, 24): "处暑",
+        (2027, 9, 8): "白露", (2027, 9, 23): "秋分", (2027, 10, 9): "寒露", (2027, 10, 24): "霜降",
+        (2027, 11, 7): "立冬", (2027, 11, 22): "小雪", (2027, 12, 7): "大雪", (2027, 12, 22): "冬至",
     }
     return term_table.get((year, month, day), None)
 
 def get_lunar_or_term(y, m, d):
-    """返回日期下方应显示的文字：节气 > 节日 > 农历，若获取失败则返回空字符串"""
-    # 1. 精确节气
+    """返回日期下方应显示的文字：节气 > 节日 > 农历"""
     term = get_accurate_solar_term(y, m, d)
     if term:
         return term
-
-    # 2. 法定节日
+    # 法定节日
     fests = {(1,1):"元旦", (5,1):"劳动节", (10,1):"国庆节"}
     if (m, d) in fests:
         return fests[(m, d)]
-
-    # 3. 农历节日
     try:
         date_obj = datetime(y, m, d)
         lunar = ZhDate.from_datetime(date_obj)
         l_fests = {(1,1):"春节", (5,5):"端午", (8,15):"中秋"}
         if (lunar.lunar_month, lunar.lunar_day) in l_fests:
             return l_fests[(lunar.lunar_month, lunar.lunar_day)]
-        # 4. 普通农历日期
-        return lunar.lunar_date_str()[-2:]
+        return lunar.lunar_date_str()[-2:]  # 如“初八”
     except:
-        return ""   # 无法获取农历就不显示
+        return ""  # 无法获取就不显示
 
-# ================= 和风天气获取（增加详细错误输出）=================
+# ================= 和风天气获取（带详细错误输出）=================
 def get_qweather():
     if not QWEATHER_KEY:
-        print("错误: 未设置 QWEATHER_API_KEY 环境变量，请检查。")
+        print("错误: 未设置 QWEATHER_API_KEY 环境变量")
         return None
     try:
         # 3天预报
         url_3d = f"https://devapi.qweather.com/v7/weather/3d?location={CITY_CODE}&key={QWEATHER_KEY}"
         resp_3d = requests.get(url_3d, timeout=10).json()
         if resp_3d.get('code') != '200':
-            print(f"和风天气3d接口错误: {resp_3d}")
+            print(f"和风天气3d接口错误: code={resp_3d.get('code')}, msg={resp_3d}")
             return None
         today = resp_3d['daily'][0]
-        city_name = "津南区"
         weather_text = today['textDay']
         temp_min = today['tempMin']
         temp_max = today['tempMax']
@@ -102,27 +100,27 @@ def get_qweather():
         url_24h = f"https://devapi.qweather.com/v7/weather/24h?location={CITY_CODE}&key={QWEATHER_KEY}"
         resp_24h = requests.get(url_24h, timeout=10).json()
         if resp_24h.get('code') != '200':
-            print(f"和风天气24h接口错误: {resp_24h}")
-            # 即便24h失败，仍返回天气，曲线不可用
-            return city_name, weather_text, temp_min, temp_max, None
+            print(f"和风天气24h接口错误: code={resp_24h.get('code')}, msg={resp_24h}")
+            return "津南区", weather_text, temp_min, temp_max, None  # 无曲线数据
 
         hourly = resp_24h['hourly']
         hours = []
         temps = []
         now_hour = datetime.now().hour
-        # 只取未来12小时
+        # 取未来12小时（最多12个点）
         for item in hourly[:12]:
             fx_time = datetime.fromisoformat(item['fxTime'])
             hour = fx_time.hour
             temp = int(item['temp'])
             hours.append(hour)
             temps.append(temp)
-        return city_name, weather_text, temp_min, temp_max, (hours, temps)
+        return "津南区", weather_text, temp_min, temp_max, (hours, temps)
     except Exception as e:
         print(f"和风天气请求异常: {e}")
         return None
 
 def draw_temp_curve(draw, hours, temps, x0, y0, width, height):
+    """绘制温度折线图"""
     if not hours or len(temps) < 2:
         draw.text((x0, y0), "温度数据不足，请检查API", font=font_item, fill=0)
         return
@@ -137,7 +135,8 @@ def draw_temp_curve(draw, hours, temps, x0, y0, width, height):
     draw.line(points, fill=0, width=2)
     draw.text((x0, y0-12), f"{temps[0]}℃", font=font_tiny, fill=0)
     draw.text((x0+width-20, y0-12), f"{temps[-1]}℃", font=font_tiny, fill=0)
-    for i in range(0, len(hours), 3):
+    # 每隔2个点标时间
+    for i in range(0, len(hours), 2):
         x = x0 + i * x_step
         draw.text((x-8, y0+height+2), f"{hours[i]}时", font=font_tiny, fill=0)
 
@@ -186,7 +185,6 @@ def task_calendar():
                 # 下方文字（节气/节日/农历）
                 bottom_text = get_lunar_or_term(y, m, day)
                 if bottom_text:
-                    # 若文字太长，缩小字体
                     if len(bottom_text) > 3:
                         try:
                             font_smaller = ImageFont.truetype(FONT_PATH, 10)
@@ -201,7 +199,7 @@ def task_calendar():
 
 # ================= Page 4: 综合看板 =================
 def task_dashboard():
-    print("生成 Page 4: 综合看板...")
+    print("生成 Page 4: 综合看板 (和风天气)...")
     img = Image.new('1', (400, 300), color=255)
     draw = ImageDraw.Draw(img)
 
@@ -215,7 +213,7 @@ def task_dashboard():
         temp_range = "请检查API Key或网络"
         hourly_data = None
 
-    # 左侧深色模块
+    # 左侧天气模块
     draw.rounded_rectangle([(10, 10), (195, 120)], radius=10, fill=0)
     draw.text((20, 20), title_str, font=font_title, fill=255)
     draw.text((20, 60), temp_range, font=font_title, fill=255)
