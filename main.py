@@ -2,7 +2,7 @@ import os
 import requests
 import calendar
 from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime, timedelta
+from datetime import datetime
 from zhdate import ZhDate
 
 # ================= 配置区 =================
@@ -10,7 +10,6 @@ API_KEY = os.environ.get("ZECTRIX_API_KEY")
 MAC_ADDRESS = os.environ.get("ZECTRIX_MAC")
 PUSH_URL = f"https://cloud.zectrix.com/open/v1/devices/{MAC_ADDRESS}/display/image"
 
-# 字体加载
 FONT_PATH = "font.ttf"
 try:
     font_huge = ImageFont.truetype(FONT_PATH, 65)   # 月份大字/实时气温
@@ -19,6 +18,7 @@ try:
     font_small = ImageFont.truetype(FONT_PATH, 14)  # 序号/星期/辅助信息
     font_tiny = ImageFont.truetype(FONT_PATH, 11)   # 农历/细节
     font_48 = ImageFont.truetype(FONT_PATH, 48)     # 当前温度专用
+    font_36 = ImageFont.truetype(FONT_PATH, 36)     # 天气描述专用
 except:
     print("错误: 找不到 font.ttf，请确保字体文件在同一目录下")
     exit(1)
@@ -27,7 +27,6 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 # ================= 工具函数 =================
 def get_wrapped_lines(text, max_chars=18):
-    """通用手动换行函数"""
     lines = []
     while text:
         lines.append(text[:max_chars])
@@ -35,7 +34,6 @@ def get_wrapped_lines(text, max_chars=18):
     return lines
 
 def get_clothing_advice(temp):
-    """根据实时气温给出具体的穿衣建议"""
     try:
         t = int(temp)
         if t >= 28: return "建议穿短袖、短裤，注意防晒补水。"
@@ -49,7 +47,6 @@ def get_clothing_advice(temp):
 
 # ================= 精确节气与农历节日 =================
 def get_solar_term(year, month, day):
-    """精确节气判断（2024-2027年）"""
     term_table = {
         (2024,2,4):"立春", (2024,2,19):"雨水", (2024,3,5):"惊蛰", (2024,3,20):"春分",
         (2024,4,4):"清明", (2024,4,19):"谷雨", (2024,5,5):"立夏", (2024,5,20):"小满",
@@ -75,7 +72,6 @@ def get_solar_term(year, month, day):
     return term_table.get((year, month, day), None)
 
 def get_lunar_or_festival(y, m, d):
-    """返回日历下方文字：节气 > 公历节日 > 农历节日 > 农历日期"""
     term = get_solar_term(y, m, d)
     if term:
         return term
@@ -106,7 +102,6 @@ def get_lunar_or_festival(y, m, d):
         return ""
 
 def push_image(img, page_id):
-    """推送图像到极趣云"""
     img.save(f"page_{page_id}.png")
     api_headers = {"X-API-Key": API_KEY}
     files = {"images": (f"page_{page_id}.png", open(f"page_{page_id}.png", "rb"), "image/png")}
@@ -254,39 +249,37 @@ def task_weather_dashboard():
         draw.text((25, 40), f"{curr_temp}°C", font=font_48, fill=0)
         # 今日高低温度
         draw.text((25, 100), f"{today_low}°/{today_high}°", font=font_item, fill=0)
-        # 天气描述（24px）
-        draw.text((150, 50), f"{weather_text}", font=font_title, fill=0)
+        # 天气描述（36px）
+        draw.text((150, 45), f"{weather_text}", font=font_36, fill=0)
 
-        # 右侧卡片（缩小宽度，右移）
+        # 右侧卡片（宽度缩小，右移）
         draw.rounded_rectangle([(235, 35), (385, 120)], radius=8, outline=0, fill=0)
-        draw.text((245, 45), f"湿度: {humidity}%", font=font_small, fill=255)
-        draw.text((245, 70), f"风速: {wind_scale}级", font=font_small, fill=255)
+        draw.text((245, 45), f"[湿] {humidity}%", font=font_small, fill=255)
+        draw.text((245, 70), f"[风] {wind_scale}级", font=font_small, fill=255)
         draw.text((245, 95), f"☀️ 紫外线 {uv_index}", font=font_small, fill=255)
 
-        # 日出日落
-        draw.text((25, 135), f"日出 {sunrise}   日落 {sunset}", font=font_small, fill=0)
+        # 日出日落（18px）
+        draw.text((25, 135), f"日出 {sunrise}   日落 {sunset}", font=font_item, fill=0)
 
-        # 未来两天预报（字体统一为 font_item 18px）
+        # 未来两天预报（字体18px）
         draw.line([(20, 160), (380, 160)], fill=0, width=1)
         x_positions = [30, 200]
         for i, day in enumerate(forecasts):
             x = x_positions[i]
-            date_str = day['date'][5:]  # MM-DD
+            date_str = day['date'][5:]
             high = day['maxtempC']
             low = day['mintempC']
-            weather_desc = day['hourly'][4]['lang_zh'][0]['value']  # 完整描述
-            # 日期、天气描述、温度全部使用 font_item (18px)
+            weather_desc = day['hourly'][4]['lang_zh'][0]['value']
             draw.text((x, 175), f"{date_str}", font=font_item, fill=0)
             draw.text((x, 200), f"{weather_desc}", font=font_item, fill=0)
             draw.text((x, 220), f"{low}°~{high}°", font=font_item, fill=0)
 
-        # 穿衣建议（下移，使用 font_item 18px）
+        # 穿衣建议（与分隔线间距缩小）
         advice = get_clothing_advice(curr_temp)
         draw.line([(20, 250), (380, 250)], fill=0, width=1)
-        # 每行18字，自动换行
         advice_lines = [advice[i:i+18] for i in range(0, len(advice), 18)]
         for i, line in enumerate(advice_lines[:2]):
-            draw.text((20, 272 + i*24), f"[衣] {line}", font=font_item, fill=0)  # 起始 y=272
+            draw.text((20, 262 + i*24), f"[衣] {line}", font=font_item, fill=0)
 
     except Exception as e:
         print(f"天气获取异常: {e}")
