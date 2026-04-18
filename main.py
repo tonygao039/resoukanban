@@ -359,9 +359,9 @@ def task_weather_dashboard():
     draw.text((150, 45), f"{weather['weather']}", font=font_36, fill=0)
 
     draw.rounded_rectangle([(235, 45), (385, 130)], radius=8, outline=0, fill=0)
-    draw.text((245, 50), f"{weather['wind_info']}", font=font_small, fill=255)
-    draw.text((245, 75), f"湿度 {weather['humidity']}", font=font_small, fill=255)
-    draw.text((245, 100), f"体感 {weather['feel_temp']}", font=font_small, fill=255)
+    draw.text((245, 63), f"{weather['wind_info']}", font=font_small, fill=255)
+    draw.text((245, 88), f"湿度 {weather['humidity']}", font=font_small, fill=255)
+    draw.text((245, 113), f"体感 {weather['feel_temp']}", font=font_small, fill=255)
 
     draw.text((25, 135), f"日出 {weather['sunrise']}   日落 {weather['sunset']}", font=font_item, fill=0)
 
