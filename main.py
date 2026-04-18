@@ -225,14 +225,14 @@ def task_calendar():
     now_utc = datetime.utcnow()
     now = now_utc + timedelta(hours=8)
     y, m, today = now.year, now.month, now.day
-    draw.text((20, 10), str(m), font=font_huge, fill=0)
-    draw.text((90, 20), now.strftime("%B"), font=font_title, fill=0)
-    draw.text((90, 48), str(y), font=font_item, fill=0)
-    draw.line([(20, 78), (380, 78)], fill=0, width=2)
+    draw.text((20, 5), str(m), font=font_huge, fill=0)
+    draw.text((90, 15), now.strftime("%B"), font=font_title, fill=0)
+    draw.text((90, 43), str(y), font=font_item, fill=0)
+    draw.line([(20, 73), (380, 73)], fill=0, width=2)
     headers = ["日", "一", "二", "三", "四", "五", "六"]
     col_w = 53
     for i, h in enumerate(headers):
-        draw.text((25 + i*col_w, 88), h, font=font_small, fill=0)
+        draw.text((25 + i*col_w, 83), h, font=font_small, fill=0)
     calendar.setfirstweekday(calendar.SUNDAY)
     cal = calendar.monthcalendar(y, m)
     curr_y, row_h = 115, 38
